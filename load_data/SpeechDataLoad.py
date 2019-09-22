@@ -76,10 +76,7 @@ class SpeechDataset(Dataset):
         :return:输入数据，相应的label
         """
         # 迭代输出需要的文件
-        try:
-            data = loadmat(self.root_dir + self.files[index])
-        except:
-            data = loadmat(self.root_dir + self.files[np.random.randint(0, 90000)])
+        data = loadmat(self.root_dir + self.files[index])
         # 三者都是从文件里读进来的，一堆采样点组成的元组(xxx,1)
         speech = data['speech']
         noise = data['noise']
@@ -159,9 +156,9 @@ class SpeechDataset(Dataset):
 class BatchInfo(object):
 
     def __init__(self, mix, speech, noise, nframe):
-        self.mix = torch.Tensor(mix).cuda()
-        self.speech = torch.Tensor(speech).cuda()
-        self.noise = torch.Tensor(noise).cuda()
+        self.mix = torch.Tensor(mix)
+        self.speech = torch.Tensor(speech)
+        self.noise = torch.Tensor(noise)
         self.nframe = nframe
 
 
@@ -185,8 +182,10 @@ class FeatureCreator(nn.Module):
         mix_imag = mix_spec[:, :, :, 1]
 
         mix_mag = torch.sqrt(mix_real ** 2 + mix_imag ** 2)
+        # mix_mag = torch.log(mix_mag)
         mix_mag = mix_mag.unsqueeze(1)
         label = self.label_helper(speech_spec, noise_spec)
+        # label = torch.load(label)
 
         return mix_mag, label, batch_info.nframe
 

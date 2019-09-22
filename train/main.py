@@ -19,11 +19,6 @@ from tensorboardX import SummaryWriter
 import progressbar
 
 
-def save(TIME):
-    pkl_name = 'model_' + str(TIME) + '.pkl'
-    torch.save(module, pkl_name)
-
-
 def validation(path, net):
     net.eval()
     files = os.listdir(path)
@@ -85,6 +80,22 @@ def validation(path, net):
     return [pesq_unprocess / len(files), pesq_res / len(files)]
 
 
+def validation_for_loss(net):
+    net.eval()
+    bar = progressbar.ProgressBar(0, validation_data_set.__len__() // VALIDATION_BATCH_SIZE)
+    feature_creator = FeatureCreator()
+    bar.start()
+    sum_loss = 0
+    for batch_idx, batch_info in enumerate(validation_data_loader.get_data_loader()):
+        bar.update(batch_idx)
+        mix_mag, label, frame_list = feature_creator(batch_info)
+        output = net(mix_mag)
+        loss = loss_helper.mse_loss(output, label, frame_list)
+        sum_loss += loss.item()
+    net.train()
+    return sum_loss / (validation_data_set.__len__() // VALIDATION_BATCH_SIZE)
+
+
 def train(net, optim, data_loader, loss_helper, epoch):
     global global_step
     writer = SummaryWriter(LOG_STORE)
@@ -103,15 +114,20 @@ def train(net, optim, data_loader, loss_helper, epoch):
             sum_loss += loss.item()
             loss.backward()
             optim.step()
-            if batch_idx % 100 == 0 and batch_idx != 0:
+            # 验证集
+            if global_step % 1000 == 0 and global_step != 0:
+                avg_loss = validation_for_loss(net)
+                torch.save(net, MODEL_STORE + 'model_' + str(global_step) + '.pkl')
+                writer.add_scalar('Validation/avg_loss', avg_loss, global_step)
+            if global_step % 100 == 0 and global_step != 0:
                 writer.add_scalar('Train/loss', sum_loss / 100, global_step)
                 sum_loss = 0
             # 验证集
-            if batch_idx % 1000 == 0 and batch_idx != 0:
-                base_pesq, res_pesq = validation(VALIDATION_DATA_PATH, net)
-                torch.save(net, MODEL_STORE + 'model_' + str(i) + '.pkl')
-                writer.add_scalar('Train/base_pesq', base_pesq, global_step)
-                writer.add_scalar('Train/res_pesq', res_pesq, global_step)
+            # if batch_idx % 1000 == 0 and batch_idx != 0:
+            #     base_pesq, res_pesq = validation(VALIDATION_DATA_PATH, net)
+            #     torch.save(net, MODEL_STORE + 'model_' + str(i) + '.pkl')
+            #     writer.add_scalar('Train/base_pesq', base_pesq, global_step)
+            #     writer.add_scalar('Train/res_pesq', res_pesq, global_step)
             global_step += 1
         bar.finish()
 
@@ -125,6 +141,7 @@ if __name__ == '__main__':
     train_data_set = SpeechDataset(root_dir=TRAIN_DATA_PATH)
     data_loader = SpeechDataLoader(data_set=train_data_set,
                                    batch_size=TRAIN_BATCH_SIZE,
+                                   num_workers=NUM_WORKERS,
                                    is_shuffle=True)
 
     module = CRNN()
